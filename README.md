@@ -1,3 +1,11 @@
+
+
+https://github.com/user-attachments/assets/d16ade5e-654a-43d4-ba09-4b3464df7230
+
+
+
+https://github.com/user-attachments/assets/95cfe96f-b958-496d-b3a9-fdc7ab74bd5b
+
 # ducklake-realtime
 
 Realtime change delivery on top of [DuckLake](https://ducklake.select) and [ducklake-cdc](https://github.com/elei-io/ducklake-cdc-extension).
