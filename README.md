@@ -26,25 +26,25 @@ The following video recordings demonstrate the core capabilities of the pipeline
 
 ### 1. Basic Realtime Sync (DML)
 Demonstrates instant synchronization of inserts and updates from DuckLake through the capture worker to the Web UI.
-<video controls src="docs/videos/1.mp4" width="100%"></video>
+👉 **[Watch: 1.mp4](docs/videos/1.mp4)**
 
 ### 2. Disconnect & Catch-up (Durability)
 Shows how the client UI handles connection loss. A row is inserted while the UI is disconnected (offline), and upon reconnecting, the UI instantly pulls the missed data from the NATS disk log without losing anything.
-<video controls src="docs/videos/2.mp4" width="100%"></video>
+👉 **[Watch: 2.mp4](docs/videos/2.mp4)**
 
 ### 3. Start Over (Fresh Sync)
 Demonstrates the "Start over" functionality. Wipes the client's local view and skips history to start listening fresh from the tip of the stream.
-<video controls src="docs/videos/3.mp4" width="100%"></video>
+👉 **[Watch: 3.mp4](docs/videos/3.mp4)**
 
 ### 4. Schema Evolution
 Demonstrates a mixed DDL/DML boundary. A column is dropped in DuckDB (`4.1`), and the Web UI instantly adapts to the new shape without crashing. Subsequent inserts (`4.2`) immediately flow through the new pipeline.
-<video controls src="docs/videos/4.1.mp4" width="100%"></video>
+👉 **[Watch: Drop Column (4.1.mp4)](docs/videos/4.1.mp4)**
 <br/>
-<video controls src="docs/videos/4.2.mp4" width="100%"></video>
+👉 **[Watch: Insert after Drop (4.2.mp4)](docs/videos/4.2.mp4)**
 
 ### 5. Boundary Stop (Table Drop)
 The grand finale. Dropping the tracked table triggers a permanent boundary stop. The capture worker cleanly terminates the stream, and the UI goes into a permanent "Ended" state.
-<video controls src="docs/videos/5.mp4" width="100%"></video>
+👉 **[Watch: 5.mp4](docs/videos/5.mp4)**
 
 ---
 
