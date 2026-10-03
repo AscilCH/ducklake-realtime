@@ -31,7 +31,7 @@ uv sync                   # Python environment
 
 ## Status
 
-- [ ] Confirm the `ducklake-cdc` extension installs and runs
-- [ ] Capture
+- [X] Confirm the `ducklake-cdc` extension installs and runs
+- [X] Capture
 - [ ] Schema boundary
 - [ ] Resume
