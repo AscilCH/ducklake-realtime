@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+
+# local DuckLake data and catalogs
+data/
+*.ducklake
+*.duckdb
+*.duckdb.wal

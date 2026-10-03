@@ -1,0 +1,20 @@
+[project]
+name = "ducklake-realtime"
+version = "0.1.0"
+description = "Realtime change delivery on DuckLake and ducklake-cdc"
+readme = "README.md"
+# ducklake-cdc-client only supports Python >=3.14
+requires-python = ">=3.14"
+dependencies = [
+    "duckdb",
+    "ducklake-cdc-client",
+    "nats-py",
+    "psycopg[binary]",
+]
+
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
