@@ -26,6 +26,7 @@ def build_event(row: dict) -> dict:
         "snapshot_id": row["snapshot_id"],
         "rowid": row["rowid"],
         "change_type": row["change_type"],
+        "table_id": row["table_id"],
         "table": row["table_name"],
         "row": {key: row[key] for key in keys[first:last]},
         "snapshot_time": row["snapshot_time"].isoformat(),
@@ -40,12 +41,13 @@ class CaptureWorker:
         # One dedicated thread for every DuckDB call: DuckDB blocks, and the event loop must not.
         self._db = ThreadPoolExecutor(max_workers=1, thread_name_prefix="duckdb")
         self.consumer: str | None = None
+        self._waiting_for: tuple[str, int] | None = None  # (table name, drop snapshot)
 
     async def _call(self, fn, *args):
         return await asyncio.get_running_loop().run_in_executor(self._db, fn, *args)
 
-    def _subject(self, table: str) -> str:
-        return f"{self._settings.subject_prefix}.{table}"
+    def _subject(self, table_id: int) -> str:
+        return f"{self._settings.subject_prefix}.{table_id}"
 
     # --- database operations (run on the DuckDB thread) ---
 
@@ -94,6 +96,41 @@ class CaptureWorker:
     def _release(self, consumer: str) -> None:
         lake.cdc(self._con, "cdc_consumer_release", consumer)
 
+    def _dropped_table_name(self, consumer: str) -> str | None:
+        """Qualified name of the consumer's table if it was dropped, else None."""
+        for row in lake.cdc(self._con, "cdc_list_subscriptions"):
+            if row["consumer_name"] == consumer and row["status"] == "dropped":
+                return row["current_qualified_name"] or row["original_qualified_name"]
+        return None
+
+    def _created_snapshot(self, table_name: str, after: int) -> int | None:
+        """First snapshot after `after` that created a table with this qualified name."""
+        rows = self._con.execute(
+            "SELECT snapshot_id, changes FROM lake.snapshots() WHERE snapshot_id > ? ORDER BY 1",
+            [after],
+        ).fetchall()
+        for snapshot_id, changes in rows:
+            if table_name in (changes.get("tables_created") or []):
+                return snapshot_id
+        return None
+
+    def _attach_by_name(self, table_name: str, boundary: int) -> str | None:
+        """Create a consumer on a recreated table; None while it has not been recreated yet."""
+        created = self._created_snapshot(table_name, boundary)
+        if created is None:
+            return None
+        consumer = f"{self._settings.base_consumer}_{created}"
+        existing = {row["consumer_name"] for row in lake.cdc(self._con, "cdc_list_consumers")}
+        if consumer not in existing:
+            lake.cdc(
+                self._con,
+                "cdc_dml_consumer_create",
+                consumer,
+                table_name=table_name,
+                start_at=created,
+            )
+        return consumer
+
     # --- main flow ---
 
     async def run(self, stop: asyncio.Event) -> None:
@@ -101,6 +138,9 @@ class CaptureWorker:
         log.info("using consumer %s", self.consumer)
         try:
             while not stop.is_set():
+                if self.consumer is None:
+                    await self._wait_for_table(stop)
+                    continue
                 rows = await self._call(self._listen, self.consumer)
                 if rows:
                     await self._publish_batch(rows)
@@ -110,21 +150,28 @@ class CaptureWorker:
                 if window["terminal"]:
                     await self._handle_boundary(window["terminal_at_snapshot"])
         finally:
-            try:
-                await self._call(self._release, self.consumer)
-            except Exception:
-                log.exception("could not release consumer %s", self.consumer)
+            if self.consumer is not None:
+                try:
+                    await self._call(self._release, self.consumer)
+                except Exception:
+                    log.exception("could not release consumer %s", self.consumer)
             self._db.shutdown()
 
     async def _publish_batch(self, rows: list[dict]) -> None:
         for row in rows:
             event = build_event(row)
             await self._js.publish(
-                self._subject(event["table"]),
+                self._subject(event["table_id"]),
                 json.dumps(event, default=str).encode(),
                 headers={"Nats-Msg-Id": f"{row['snapshot_id']}-{row['rowid']}-{row['change_type']}"},
             )
-            log.debug("event %s", event)
+            log.info(
+                "  %-6s snapshot %d  %s  %s",
+                event["change_type"],
+                event["snapshot_id"],
+                event["table"],
+                event["row"],
+            )
         end_snapshot = max(row["end_snapshot"] for row in rows)
         # Commit only after every event is in the log: a crash replays the batch, never loses it.
         await self._call(self._commit, self.consumer, end_snapshot)
@@ -132,16 +179,44 @@ class CaptureWorker:
 
     async def _handle_boundary(self, boundary: int) -> None:
         table_id, table_name = await self._call(self._table_of, self.consumer)
-        marker = {"type": "schema_changed", "table": table_name, "boundary_snapshot": boundary}
+        dropped_name = await self._call(self._dropped_table_name, self.consumer)
+        dropped = dropped_name is not None
+        table_name = table_name or dropped_name
+        marker = {
+            "type": "table_dropped" if dropped else "schema_changed",
+            "table_id": table_id,
+            "table": table_name,
+            "boundary_snapshot": boundary,
+        }
         await self._js.publish(
-            self._subject(table_name),
+            self._subject(table_id),
             json.dumps(marker).encode(),
-            headers={"Nats-Msg-Id": f"schema-{table_id}-{boundary}"},  # deduplicated on retry
+            headers={"Nats-Msg-Id": f"{marker['type']}-{table_id}-{boundary}"},  # deduped on retry
         )
+        if dropped:
+            # The table identity is gone for good. A table recreated under the same name is a
+            # new identity (new table_id), so wait for it and attach a fresh consumer.
+            await self._call(self._release, self.consumer)
+            log.info("table %s dropped at snapshot %d: waiting for it to be recreated", table_name, boundary)
+            self._waiting_for = (table_name, boundary)
+            self.consumer = None
+            return
         successor = f"{self._settings.base_consumer}_{boundary}"
         await self._call(self._switch, self.consumer, successor, table_id, boundary)
         log.info("schema boundary at snapshot %d: %s -> %s", boundary, self.consumer, successor)
         self.consumer = successor
+
+    async def _wait_for_table(self, stop: asyncio.Event) -> None:
+        table_name, boundary = self._waiting_for
+        consumer = await self._call(self._attach_by_name, table_name, boundary)
+        if consumer:
+            log.info("table %s exists again: using consumer %s", table_name, consumer)
+            self.consumer, self._waiting_for = consumer, None
+            return
+        try:
+            await asyncio.wait_for(stop.wait(), self._settings.listen_timeout_ms / 1000)
+        except asyncio.TimeoutError:
+            pass
 
 
 async def run(settings: Settings) -> None:
