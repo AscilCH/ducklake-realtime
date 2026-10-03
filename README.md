@@ -1,10 +1,18 @@
 
 
-https://github.com/user-attachments/assets/d16ade5e-654a-43d4-ba09-4b3464df7230
 
 
 
-https://github.com/user-attachments/assets/95cfe96f-b958-496d-b3a9-fdc7ab74bd5b
+
+
+
+
+
+
+
+
+
+
 
 # ducklake-realtime
 
@@ -34,25 +42,26 @@ The following video recordings demonstrate the core capabilities of the pipeline
 
 ### 1. Basic Realtime Sync (DML)
 Demonstrates instant synchronization of inserts and updates from DuckLake through the capture worker to the Web UI.
-👉 **[Watch: 1.mp4](docs/videos/1.mp4)**
+https://github.com/user-attachments/assets/95cfe96f-b958-496d-b3a9-fdc7ab74bd5b
 
 ### 2. Disconnect & Catch-up (Durability)
 Shows how the client UI handles connection loss. A row is inserted while the UI is disconnected (offline), and upon reconnecting, the UI instantly pulls the missed data from the NATS disk log without losing anything.
-👉 **[Watch: 2.mp4](docs/videos/2.mp4)**
+https://github.com/user-attachments/assets/d16ade5e-654a-43d4-ba09-4b3464df7230
 
 ### 3. Start Over (Fresh Sync)
 Demonstrates the "Start over" functionality. Wipes the client's local view and skips history to start listening fresh from the tip of the stream.
-👉 **[Watch: 3.mp4](docs/videos/3.mp4)**
+https://github.com/user-attachments/assets/395938e6-ed16-4bb5-9d37-f31b4036301b
+
 
 ### 4. Schema Evolution
 Demonstrates a mixed DDL/DML boundary. A column is dropped in DuckDB (`4.1`), and the Web UI instantly adapts to the new shape without crashing. Subsequent inserts (`4.2`) immediately flow through the new pipeline.
-👉 **[Watch: Drop Column (4.1.mp4)](docs/videos/4.1.mp4)**
+https://github.com/user-attachments/assets/cf4f25fd-7f8e-40f5-9892-9d4efa656f95
 <br/>
-👉 **[Watch: Insert after Drop (4.2.mp4)](docs/videos/4.2.mp4)**
+https://github.com/user-attachments/assets/7c4d9031-9eaf-4021-b145-2d40ac20dbcd
 
 ### 5. Boundary Stop (Table Drop)
 The grand finale. Dropping the tracked table triggers a permanent boundary stop. The capture worker cleanly terminates the stream, and the UI goes into a permanent "Ended" state.
-👉 **[Watch: 5.mp4](docs/videos/5.mp4)**
+https://github.com/user-attachments/assets/1df0c739-785d-4acc-8248-14230addfe17
 
 ---
 
