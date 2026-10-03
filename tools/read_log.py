@@ -28,7 +28,10 @@ async def dump(settings: Settings) -> None:
         print(f"{'seq':>3}  {'subject':<22} {'kind':<14} {'snap':>4}  {'table':<14} detail")
         print("-" * 90)
         for seq in range(info.state.first_seq, info.state.last_seq + 1):
-            msg = await js.get_msg(settings.stream, seq)
+            try:
+                msg = await js.get_msg(settings.stream, seq)
+            except Exception:
+                continue  # Skip messages that were deleted or expired
             kind, snap, table, detail = describe(json.loads(msg.data))
             print(f"{seq:>3}  {msg.subject:<22} {kind:<14} {snap:>4}  {table:<14} {detail}")
     finally:

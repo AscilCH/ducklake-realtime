@@ -20,6 +20,27 @@ services:
     volumes:
       - natsdata:/data
 
+  # Web UI to inspect the DuckLake catalog (the ducklake_* tables in Postgres)
+  adminer:
+    image: adminer:4
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    ports:
+      - "${ADMINER_PORT}:8080"
+    depends_on:
+      - postgres
+
+  # Web UI to inspect the JetStream log (streams, messages, consumers)
+  nui:
+    image: ghcr.io/nats-nui/nui:latest
+    ports:
+      - "${NUI_PORT}:31311"
+    volumes:
+      - nuidata:/db
+    depends_on:
+      - nats
+
 volumes:
   pgdata:
   natsdata:
+  nuidata:

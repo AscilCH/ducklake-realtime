@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Realtime subscriber</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #fff; --text: #1d2330; --muted: #6b7385; --line: #e3e6ec;
+    --green: #1a9b5a; --grey: #7a8294; --red: #d23b3b; --amber: #c98512; --blue: #2468d8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  header { display: flex; align-items: center; gap: 14px; padding: 14px 24px; background: var(--card); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  h1 { font-size: 18px; margin: 0; }
+  .badge { padding: 4px 12px; border-radius: 999px; color: #fff; font-weight: 600; font-size: 13px; }
+  .badge.online { background: var(--green); }
+  .badge.offline { background: var(--grey); }
+  .badge.error, .badge.ended { background: var(--red); }
+  .spacer { flex: 1; }
+  button { font: inherit; padding: 6px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--grey); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: var(--text); color: #fff; border-color: var(--text); }
+
+  .wrap { max-width: 1320px; margin: 0 auto; padding: 20px 24px 40px; }
+  .subscription { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; }
+  .subscription .title { font-size: 17px; }
+  .subscription .title b { font-size: 20px; }
+  .subscription .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .subscription .state { margin-top: 10px; font-size: 14px; }
+  .subscription.offline { border-left: 4px solid var(--grey); }
+  .subscription.online { border-left: 4px solid var(--green); }
+  .subscription.error, .subscription.ended { border-left: 4px solid var(--red); }
+  code { font: 12.5px ui-monospace, Consolas, monospace; background: #eef0f4; padding: 1px 6px; border-radius: 5px; }
+
+  .stats { display: flex; gap: 12px; margin: 14px 0; flex-wrap: wrap; }
+  .stat { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; flex: 1; min-width: 150px; }
+  .stat b { display: block; font-size: 22px; }
+  .stat span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .stat.behind b { color: var(--amber); }
+
+  .banner { margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; border: 1px solid; display: none; }
+  .banner.show { display: block; }
+  .banner.warn { background: #fff7e6; border-color: #f0d79a; color: #7a5200; }
+  .banner.bad { background: #fdecec; border-color: #f0b7b7; color: #8c1f1f; }
+
+  h2 { font-size: 15px; margin: 22px 0 10px; }
+  h2 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  #feed { display: flex; flex-direction: column; gap: 8px; }
+  .event { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--grey); border-radius: 10px; padding: 10px 14px; }
+  .event.new { animation: pop .9s ease-out; }
+  @keyframes pop { from { background: #eaf6ef; transform: translateY(-6px); opacity: .3; } to { background: var(--card); transform: none; opacity: 1; } }
+  .event .head { display: flex; gap: 10px; align-items: baseline; }
+  .event .kind { font-weight: 700; font-size: 12px; letter-spacing: .06em; }
+  .event .what { font-weight: 600; }
+  .event .meta { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .event .body { margin-top: 6px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { background: #f1f3f7; border-radius: 6px; padding: 2px 8px; font: 13px ui-monospace, Consolas, monospace; }
+  .chip i { color: var(--muted); font-style: normal; }
+  .chip .from { color: var(--red); text-decoration: line-through; }
+  .chip .to { color: var(--green); font-weight: 600; }
+  .event.insert { border-left-color: var(--green); } .insert .kind { color: var(--green); }
+  .event.update { border-left-color: var(--blue); } .update .kind { color: var(--blue); }
+  .event.delete { border-left-color: var(--red); } .delete .kind { color: var(--red); }
+  .event.schema_changed { border-left-color: var(--amber); background: #fffaf0; } .schema_changed .kind { color: var(--amber); }
+  .event.table_dropped { border-left-color: var(--red); background: #fff5f5; } .table_dropped .kind { color: var(--red); }
+  .empty { padding: 26px; color: var(--muted); text-align: center; background: var(--card); border: 1px dashed var(--line); border-radius: 10px; }
+
+  details { margin-top: 26px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+  summary { cursor: pointer; padding: 12px 16px; font-weight: 600; }
+  details .note { padding: 0 16px 10px; color: var(--muted); font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 16px; border-top: 1px solid var(--line); }
+  th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  td.rowid { color: var(--muted); }
+  tr.flash td { animation: flash 1.6s ease-out; }
+  td.cellflash { animation: cell 2s ease-out; }
+  th.newcol { animation: cell 2s ease-out; color: var(--green); }
+  @keyframes flash { from { background: #d8f3e4; } to { background: transparent; } }
+  @keyframes cell { from { background: #ffe9a8; } to { background: transparent; } }
+  .layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .tablebox { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow-x: auto; }
+  .tablebox .empty { border: 0; }
+  .layout .note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .chip.changed { background: #e8f0fd; }
+  #feed { max-height: 70vh; overflow-y: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Realtime subscriber</h1>
+  <span id="badge" class="badge offline">Connecting…</span>
+  <span class="spacer"></span>
+  <button id="btn-disconnect" title="Simulate losing the connection">Disconnect</button>
+  <button id="btn-connect" class="primary" title="Reconnect and catch up from the log">Reconnect</button>
+  <button id="btn-reset" title="Forget the saved position and subscribe again from now">Start over</button>
+</header>
+
+<div class="wrap">
+  <div id="subscription" class="subscription offline">
+    <div class="title">Subscribed to changes on <b id="table">…</b></div>
+    <div class="meta">channel <code id="channel"></code> · table id <span id="table-id"></span></div>
+    <div class="state" id="state"></div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><span>Log messages received</span><b id="received">0</b></div>
+    <div class="stat"><span>Log position</span><b id="pos">–</b></div>
+    <div class="stat behind"><span>Behind the log</span><b id="waiting">0</b></div>
+  </div>
+
+  <div id="banner-error" class="banner bad"></div>
+  <div id="banner-reload" class="banner warn">The table changed shape. Anything this client built from earlier events may have the old shape: it has to reload.</div>
+  <div id="banner-ended" class="banner bad">The table was dropped. This subscription is over.</div>
+
+  <div class="layout">
+    <section>
+      <h2>Table <small id="row-count"></small></h2>
+      <div class="tablebox"><div id="rows"></div></div>
+      <div class="note">Built from the events this client received since it started. It is complete when started on a clean table.</div>
+    </section>
+    <section>
+      <h2>Changes received <small>newest first</small></h2>
+      <div id="feed"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const show = (v) => (typeof v === "string" ? "'" + v + "'" : v === null ? "null" : String(v));
+let seen = null;       // sequences already drawn, to animate only new events
+let previousCells = null;
+let previousColumns = null;
+let lastSig = null;
+
+function chips(row) {
+  return Object.entries(row).map(([k, v]) => '<span class="chip"><i>' + esc(k) + "</i> " + esc(show(v)) + "</span>").join("");
+}
+
+function changes(before, after) {
+  const keys = [...new Set([...Object.keys(before || {}), ...Object.keys(after || {})])];
+  const out = [];
+  for (const k of keys) {
+    const b = before ? before[k] : undefined, a = after ? after[k] : undefined;
+    if (JSON.stringify(b) === JSON.stringify(a)) continue;
+    out.push('<span class="chip"><i>' + esc(k) + '</i> <span class="from">' + esc(b === undefined ? "∅" : show(b)) +
+             '</span> → <span class="to">' + esc(a === undefined ? "∅" : show(a)) + "</span></span>");
+  }
+  return out.join("") || '<span class="chip"><i>no value changed</i></span>';
+}
+
+function card(f, isNew) {
+  const meta = "#" + f.seq + " · " + f.time + " · snapshot " + f.snapshot;
+  const cls = "event " + f.kind + (isNew ? " new" : "");
+  const head = (kind, what) => '<div class="head"><span class="kind">' + kind + '</span><span class="what">' + what + '</span><span class="meta">' + meta + "</span></div>";
+  if (f.kind === "insert") return '<div class="' + cls + '">' + head("INSERT", "New row") + '<div class="body">' + chips(f.after) + "</div></div>";
+  if (f.kind === "delete") return '<div class="' + cls + '">' + head("DELETE", "Row removed") + '<div class="body">' + chips(f.before) + "</div></div>";
+  if (f.kind === "update") {
+    const before = f.before || {}, after = f.after || {};
+    const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])];
+    const body = keys.map((k) => JSON.stringify(before[k]) === JSON.stringify(after[k])
+      ? '<span class="chip"><i>' + esc(k) + "</i> " + esc(show(after[k])) + "</span>"
+      : '<span class="chip changed"><i>' + esc(k) + '</i> <span class="from">' + esc(before[k] === undefined ? "∅" : show(before[k])) +
+        '</span> → <span class="to">' + esc(after[k] === undefined ? "∅" : show(after[k])) + "</span></span>").join("");
+    return '<div class="' + cls + '">' + head("UPDATE", "Row changed") + '<div class="body">' + body + "</div></div>";
+  }
+  if (f.kind === "schema_changed") return '<div class="' + cls + '">' + head("SCHEMA CHANGED", "The table changed shape") + '<div class="body">The stream restarts at snapshot ' + f.snapshot + ". Clients must reload.</div></div>";
+  return '<div class="' + cls + '">' + head("TABLE DROPPED", "The table no longer exists") + '<div class="body">This stream ended at snapshot ' + f.snapshot + ".</div></div>";
+}
+
+function render(s) {
+  $("table").textContent = s.table || "table " + s.table_id;
+  $("table-id").textContent = s.table_id;
+  $("channel").textContent = s.channel;
+  const badge = $("badge");
+  badge.className = "badge " + s.status;
+  badge.textContent = { online: "Listening", offline: "Disconnected", error: "Problem", ended: "Table dropped" }[s.status];
+  $("subscription").className = "subscription " + s.status;
+
+  let state = "";
+  if (s.status === "online") state = s.waiting ? "Catching up: <b>" + s.waiting + "</b> changes behind the log." : "Listening. New changes appear below as they happen.";
+  else if (s.status === "offline") state = s.waiting ? "Disconnected. <b>" + s.waiting + "</b> changes happened meanwhile and are waiting in the log. Reconnect to receive them." : "Disconnected. Nothing missed so far.";
+  else if (s.status === "ended") state = "Subscription over.";
+  else state = "This client cannot continue.";
+  $("state").innerHTML = state;
+
+  $("received").textContent = s.received;
+  $("pos").textContent = s.last_seq;
+  $("waiting").textContent = s.waiting;
+
+  $("btn-disconnect").disabled = s.status !== "online";
+  $("btn-connect").disabled = s.status !== "offline";
+
+  const err = $("banner-error");
+  err.textContent = s.error || "";
+  err.classList.toggle("show", !!s.error);
+  $("banner-reload").classList.toggle("show", s.needs_reload);
+  $("banner-ended").classList.toggle("show", s.ended);
+
+  const first = seen === null;
+  seen = seen || new Set();
+  $("feed").innerHTML = s.feed.length
+    ? s.feed.map((f) => { const isNew = !first && !seen.has(f.seq); return card(f, isNew); }).join("")
+    : '<div class="empty">Nothing received yet. Change something in DuckLake and it shows up here.</div>';
+  s.feed.forEach((f) => seen.add(f.seq));
+
+  const columns = [...(s.columns || [])];
+  s.rows.forEach((r) => Object.keys(r.row).forEach((k) => columns.includes(k) || columns.push(k)));
+  const sig = JSON.stringify([columns, s.rows]);
+  if (sig === lastSig) return;  // unchanged: do not redraw, so flashes can finish
+  lastSig = sig;
+  $("row-count").textContent = s.rows.length + (s.rows.length === 1 ? " row" : " rows");
+  if (!columns.length) {
+    $("rows").innerHTML = '<div class="empty">No rows yet. Insert something in DuckLake.</div>';
+  } else {
+    const now = {}, cells = {};
+    let html = "<table><thead><tr><th>rowid</th>" + columns.map((c) => "<th" + (previousColumns && !previousColumns.includes(c) ? ' class="newcol"' : "") + ">" + esc(c) + "</th>").join("") + "</tr></thead><tbody>";
+    s.rows.forEach((r) => {
+      now[r.rowid] = JSON.stringify(r.row);
+      const old = previousCells ? previousCells[r.rowid] : null;
+      const isNewRow = previousCells !== null && !old;
+      html += "<tr" + (isNewRow ? ' class="flash"' : "") + '><td class="rowid">' + esc(r.rowid) + "</td>" +
+        columns.map((c) => {
+          const v = r.row[c];
+          const text = v === undefined || v === null ? "" : String(v);
+          const changed = old && old[c] !== text && !isNewRow;
+          (cells[r.rowid] = cells[r.rowid] || {})[c] = text;
+          return "<td" + (changed ? ' class="cellflash"' : "") + ">" + esc(text) + "</td>";
+        }).join("") + "</tr>";
+    });
+    $("rows").innerHTML = html + "</tbody></table>";
+    previousCells = cells;
+    previousColumns = columns;
+  }
+}
+
+const post = (path) => fetch(path, { method: "POST" }).then((r) => r.json()).then(render);
+$("btn-disconnect").onclick = () => post("/api/disconnect");
+$("btn-connect").onclick = () => post("/api/connect");
+$("btn-reset").onclick = () => { seen = null; previousCells = null; previousColumns = null; lastSig = null; post("/api/reset"); };
+
+const source = new EventSource("/events");
+source.onmessage = (e) => render(JSON.parse(e.data));
+source.onerror = () => { $("badge").className = "badge error"; $("badge").textContent = "Page lost the server"; };
+</script>
+</body>
+</html>
